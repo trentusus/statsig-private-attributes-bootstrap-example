@@ -50,9 +50,11 @@ Those logs are intentionally small so a new reader can follow the privacy bounda
 
 1. Copy `.env.example` to `.env`
 2. Fill in `STATSIG_SERVER_KEY`, `STATSIG_CLIENT_KEY`, and `STATSIG_GATE_NAME`
-3. Run `npm install`
-4. Run `npm start`
-5. Open `http://localhost:3000`
+3. In Statsig, create a feature gate whose name matches `STATSIG_GATE_NAME`
+4. Add one rule to that gate with a 100% pass rate when `email` is `client-side-private@example.com`
+5. Run `npm install`
+6. Run `npm start`
+7. Open `http://localhost:3000`
 
 ## Files
 
