@@ -1,0 +1,16 @@
+{
+  "name": "statsig-bootstrap-private-attributes-snippet",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild client.js --bundle --format=esm --platform=browser --outfile=dist/client.bundle.js",
+    "start": "npm run build && node --env-file=.env server.js"
+  },
+  "dependencies": {
+    "@statsig/js-client": "^3.32.2",
+    "@statsig/statsig-node-core": "^0.17.0",
+    "cookie-parser": "^1.4.7",
+    "esbuild": "^0.27.4",
+    "express": "^5.2.1"
+  }
+}
