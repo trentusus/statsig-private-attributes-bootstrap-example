@@ -64,7 +64,14 @@ export async function initializeStatsigFromBootstrap() {
     ),
   );
 
-  const client = new StatsigClient(CLIENT_KEY, user, {
+  const clientUser = {
+    ...user,
+    privateAttributes: {
+      email: 'client-side-private@example.com',
+    },
+  };
+
+  const client = new StatsigClient(CLIENT_KEY, clientUser, {
     disableCompression: true,
     networkConfig: {
       networkOverrideFunc: createLoggingNetworkOverride(),
