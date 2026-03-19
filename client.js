@@ -88,8 +88,8 @@ async function render() {
   await client.flush();
 
   document.body.innerHTML = gateValue
-    ? '<h1>New checkout is enabled</h1>'
-    : '<h1>New checkout is disabled</h1>';
+    ? `<h1>Gate: ${GATE_NAME} is enabled</h1>`
+    : `<h1>Gate: ${GATE_NAME} is disabled</h1>`;
 }
 
 render().catch((error) => {
