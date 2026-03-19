@@ -1,78 +1,65 @@
 # Statsig bootstrap example: JS client + Node server + private attributes
 
-This runnable sample app shows the safe pattern for:
+This sample shows a simple pattern for evaluating a gate with `privateAttributes` without sending those raw private values to Statsig from the browser.
 
-- Evaluating a feature gate with `privateAttributes`
-- Keeping those `privateAttributes` on your Node server
-- Bootstrapping `@statsig/js-client` asynchronously from your own backend
-- Avoiding a browser `initialize` call to Statsig
+## The 3-step flow
 
-## Responsibilities
+1. The client creates a `StatsigUser` with `userID` and `privateAttributes`, then sends that user to your server.
+2. The server calls `getClientInitializeResponse(...)`, so evaluation with the private attribute happens on the server.
+3. The client loads the bootstrapped values and runs `checkGate(...)`, but the exposure event sent to Statsig does not include `privateAttributes`.
 
-### Server responsibilities
+## What the server does
 
-- The Node server creates the `StatsigUser`
-- The Node server attaches `privateAttributes` such as email
-- The Node server performs the PII-based evaluation by calling `getClientInitializeResponse(...)`
-- The Node server returns a bootstrapped initialize response to the browser
+- Receives the client user object at `POST /api/statsig/bootstrap`
+- Adds a `stableID`
+- Calls `getClientInitializeResponse(...)`
+- Returns the bootstrapped values to the browser
 
-In this sample, the sensitive evaluation happens on the server. Raw `privateAttributes` are never sent from the browser to Statsig.
+In this sample, `getClientInitializeResponse(...)` runs locally on the server. It does not make a browser initialize call to Statsig.
 
-### Client responsibilities
+## What the client does
 
-- The browser fetches the bootstrapped initialize response from your server
-- The browser loads that response into `@statsig/js-client`
-- The browser performs the actual `checkGate(...)` call locally using the bootstrapped data
-- The browser may still log exposures/events, but those payloads do not include `privateAttributes`
+- Defines the demo `StatsigUser` in [client.js](/Users/tkalischsmith/statsig-code/customer-snippets/js-client-node-core-bootstrap-private-attributes/client.js)
+- Sends that user to your server for bootstrapping
+- Loads the bootstrapped response into `@statsig/js-client`
+- Calls `checkGate(...)`
+- Flushes the exposure event so you can verify that no raw `privateAttributes` were sent
 
-In this sample, the client does the gate check, but it does not send raw private attribute data to Statsig.
+## What the demo page shows
 
-## Why this pattern works
+When you open the sample app, the page itself shows:
 
-1. The Node server builds the `StatsigUser` and sets `privateAttributes`.
-2. The Node server calls `getClientInitializeResponse(...)`, so PII-based evaluation happens on the server.
-3. The browser fetches the precomputed initialize response from your backend.
-4. The browser loads that response with `client.dataAdapter.setData(...)`.
-5. The browser calls `client.initializeSync({ disableBackgroundCacheRefresh: true })`.
-6. The browser calls `checkGate(...)` locally using the bootstrapped values, without sending `privateAttributes`.
+- whether the gate is enabled
+- whether the server evaluated with `privateAttributes`
+- whether `getClientInitializeResponse(...)` ran locally on the server
+- whether the bootstrap response contained raw `privateAttributes`
+- whether the bootstrap response contained `pa_hash`
+- whether the `checkGate(...)` exposure sent `privateAttributes`
 
-That last step is important: it prevents the JS client from doing a background refresh that would otherwise make an `initialize` request from the browser.
+## What to look for in the console
+
+- `[client] sending user to your server for bootstrap`
+- `[server] evaluation summary`
+- `[server] bootstrap summary`
+- `[client] bootstrap summary from your server`
+- `[client] checkGate exposure sent to Statsig`
+
+Those logs are intentionally small so a new reader can follow the privacy boundary without digging through the full initialize payload.
 
 ## Setup
 
 1. Copy `.env.example` to `.env`
-2. Fill in your Statsig keys and the gate name you want to demo
+2. Fill in `STATSIG_SERVER_KEY`, `STATSIG_CLIENT_KEY`, and `STATSIG_GATE_NAME`
 3. Run `npm install`
 4. Run `npm start`
 5. Open `http://localhost:3000`
 
 ## Files
 
-- `server.js`: Express app that serves the demo page, performs the bootstrapping, and handles PII-based evaluation with `privateAttributes`
-- `client.js`: Browser-side async bootstrap consumer that performs the gate check locally
-- `.env.example`: required Statsig SDK key placeholders
-- `.gitignore`: excludes `.env`, build output, and local dependencies
+- [server.js](/Users/tkalischsmith/statsig-code/customer-snippets/js-client-node-core-bootstrap-private-attributes/server.js): Express server that bootstraps Statsig with the client user
+- [client.js](/Users/tkalischsmith/statsig-code/customer-snippets/js-client-node-core-bootstrap-private-attributes/client.js): browser demo that sends the user to the server, runs `checkGate(...)`, and shows the privacy checks on the page
+- [.env.example](/Users/tkalischsmith/statsig-code/customer-snippets/js-client-node-core-bootstrap-private-attributes/.env.example): required env vars
 
-## What to look for in the logs
+## Note for real apps
 
-- The server logs `evaluation user (server-only)`, which includes `privateAttributes.email`.
-- The server logs `bootstrap payload returned to browser`, which shows `user`, `pa_hash`, and `includesPrivateAttributes: false`.
-- The browser logs `bootstrap payload received from server`, which should not contain `user.privateAttributes`.
-- The browser logs `outgoing Statsig request`, which lets you inspect the actual payload sent to Statsig for the exposure event after the client performs `checkGate(...)`.
-
-With this setup, you should see:
-
-- No browser `/initialize` request to Statsig
-- A browser `/log_event` request after the client-side gate check flushes
-- No `privateAttributes` field in the logged event payload
-
-## Notes
-
-- This keeps `privateAttributes` from being sent to Statsig by the browser.
-- The server is responsible for bootstrapping and PII-based evaluation.
-- The client is responsible for doing the gate check with the bootstrapped data.
-- `STATSIG_GATE_NAME` is included in the env template so the server filter and client gate check stay aligned.
-- The bootstrap response may include `pa_hash`, which is a hash derived from the private attributes, not the raw private values.
-- Exposure or custom event logging from the browser can still happen, but those will use the public user object you pass to the client, not the server-only `privateAttributes`.
-- If you also want zero browser traffic to Statsig, you would need to disable client network traffic separately and handle exposure logging some other way.
-- In a real app, derive sensitive fields such as email from your server session or database instead of trusting client input.
+This sample intentionally keeps the private attribute visible in the client code so the flow is easy to understand. In a real application, sensitive values such as email are usually derived on the server from your authenticated session or database rather than trusted from client input.

@@ -37,6 +37,85 @@ function getOrCreateStableID(req, res) {
   return stableID;
 }
 
+function getBootstrapRequestUser(body) {
+  const user = body?.user;
+  if (user == null || typeof user !== 'object' || Array.isArray(user)) {
+    return null;
+  }
+
+  const hasUserID =
+    typeof user.userID === 'string' && user.userID.trim().length > 0;
+  const hasCustomIDs =
+    user.customIDs != null &&
+    typeof user.customIDs === 'object' &&
+    !Array.isArray(user.customIDs) &&
+    Object.keys(user.customIDs).length > 0;
+
+  if (!hasUserID && !hasCustomIDs) {
+    return null;
+  }
+
+  return user;
+}
+
+function buildStatsigUser(clientUser, stableID) {
+  return new StatsigUser({
+    ...clientUser,
+    customIDs: {
+      ...(clientUser.customIDs ?? {}),
+      stableID,
+    },
+  });
+}
+
+function logBootstrapInputs(clientUser, statsigUser) {
+  console.log(
+    '[server] client user received for bootstrap',
+    JSON.stringify(
+      {
+        userID: clientUser.userID,
+        hasPrivateAttributes: clientUser.privateAttributes != null,
+      },
+      null,
+      2,
+    ),
+  );
+
+  console.log(
+    '[server] evaluation summary',
+    JSON.stringify(
+      {
+        userID: statsigUser.userID,
+        privateEmailUsedForEvaluation:
+          statsigUser.privateAttributes?.email ?? null,
+        stableID: statsigUser.customIDs?.stableID ?? null,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+function getBootstrapValues(statsigUser) {
+  return statsig.getClientInitializeResponse(statsigUser, {
+    clientSdkKey: process.env.STATSIG_CLIENT_KEY,
+    hashAlgorithm: 'djb2',
+    featureGateFilter: new Set([GATE_NAME]),
+  });
+}
+
+function buildBootstrapSummary(statsigUser, bootstrapValues) {
+  return {
+    serverEvaluatedWithPrivateAttributes:
+      statsigUser.privateAttributes != null,
+    getClientInitializeResponseRunsLocally: true,
+    bootstrapResponseHasPrivateAttributes:
+      bootstrapValues.user?.privateAttributes != null,
+    bootstrapResponseHasPrivateAttributeHash:
+      bootstrapValues.pa_hash != null,
+  };
+}
+
 app.get('/', (_req, res) => {
   res.type('html').send(`<!doctype html>
 <html>
@@ -64,69 +143,37 @@ app.get('/client.bundle.js', (_req, res) => {
   res.type('js').send(bundle);
 });
 
-app.get('/api/statsig/bootstrap', (req, res) => {
-  // Replace this with your real auth/session lookup.
-  const authenticatedUser = {
-    id: 'user-123',
-    email: 'someone@example.com',
-  };
-
-  if (!authenticatedUser) {
-    res.status(401).json({ error: 'Not authenticated' });
+app.post('/api/statsig/bootstrap', (req, res) => {
+  const clientUser = getBootstrapRequestUser(req.body);
+  if (clientUser == null) {
+    res.status(400).json({
+      error:
+        'Expected req.body.user with at least userID or customIDs for bootstrapping.',
+    });
     return;
   }
 
+  // Step 1: build the server-side Statsig user from the client user.
   const stableID = getOrCreateStableID(req, res);
+  const statsigUser = buildStatsigUser(clientUser, stableID);
+  logBootstrapInputs(clientUser, statsigUser);
 
-  const statsigUser = new StatsigUser({
-    userID: authenticatedUser.id,
-    customIDs: {
-      stableID,
-    },
-  });
+  // Step 2: compute the bootstrapped response on the server.
+  const initializeResponse = getBootstrapValues(statsigUser);
+  const bootstrapValues = JSON.parse(initializeResponse);
+  const bootstrappedUser = bootstrapValues.user;
+  const demoSummary = buildBootstrapSummary(statsigUser, bootstrapValues);
 
-  // Sensitive fields stay on the server and are only used for evaluation.
-  statsigUser.privateAttributes = {
-    email: authenticatedUser.email,
-  };
-
+  // Step 3: return a small summary along with the bootstrapped values.
   console.log(
-    '[server] evaluation user (server-only)',
-    JSON.stringify(statsigUser.toJSON(), null, 2),
+    '[server] bootstrap summary',
+    JSON.stringify(demoSummary, null, 2),
   );
-
-  const initializeResponse = statsig.getClientInitializeResponse(statsigUser, {
-    clientSdkKey: process.env.STATSIG_CLIENT_KEY,
-    hashAlgorithm: 'djb2',
-    featureGateFilter: new Set([GATE_NAME]),
-  });
-
-  const parsedInitializeResponse = JSON.parse(initializeResponse);
-  console.log(
-    '[server] bootstrap payload returned to browser',
-    JSON.stringify(
-      {
-        user: parsedInitializeResponse.user,
-        pa_hash: parsedInitializeResponse.pa_hash,
-        includesPrivateAttributes:
-          parsedInitializeResponse.user?.privateAttributes != null,
-      },
-      null,
-      2,
-    ),
-  );
-
-  // Send only the public user shape the browser should keep using.
-  const publicUser = {
-    userID: authenticatedUser.id,
-    customIDs: {
-      stableID,
-    },
-  };
 
   res.json({
-    user: publicUser,
+    user: bootstrappedUser,
     initializeResponse,
+    demoSummary,
   });
 });
 
