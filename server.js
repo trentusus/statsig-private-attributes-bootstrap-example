@@ -17,7 +17,125 @@ const app = express();
 app.use(cookieParser());
 app.use(express.json());
 
-const statsig = new Statsig(process.env.STATSIG_SERVER_KEY);
+function parseBooleanEnv(value) {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (value === 'true') {
+    return true;
+  }
+
+  if (value === 'false') {
+    return false;
+  }
+
+  return undefined;
+}
+
+function parseNumberEnv(value) {
+  if (value == null || value === '') {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function buildProxyConfigFromEnv() {
+  if (
+    process.env.STATSIG_PROXY_HOST == null ||
+    process.env.STATSIG_PROXY_PROTOCOL == null
+  ) {
+    return undefined;
+  }
+
+  return {
+    proxyHost: process.env.STATSIG_PROXY_HOST,
+    proxyPort: parseNumberEnv(process.env.STATSIG_PROXY_PORT),
+    proxyAuth: process.env.STATSIG_PROXY_AUTH,
+    proxyProtocol: process.env.STATSIG_PROXY_PROTOCOL,
+    caCertPath: process.env.STATSIG_PROXY_CA_CERT_PATH,
+  };
+}
+
+function createStatsigOutputLogger() {
+  function write(level, tag, message) {
+    console.log(
+      `[statsig-sdk][${level}] ${new Date().toISOString()} ${tag} ${message}`,
+    );
+  }
+
+  return {
+    initialize() {
+      console.log('[statsig-sdk][initialize] output logger attached');
+    },
+    debug(tag, message) {
+      write('debug', tag, message);
+    },
+    info(tag, message) {
+      write('info', tag, message);
+    },
+    warn(tag, message) {
+      write('warn', tag, message);
+    },
+    error(tag, message) {
+      write('error', tag, message);
+    },
+    shutdown() {
+      console.log('[statsig-sdk][shutdown] output logger detached');
+    },
+  };
+}
+
+function buildStatsigOptions() {
+  const proxyConfig = buildProxyConfigFromEnv();
+  const outputLogLevel = process.env.STATSIG_OUTPUT_LOG_LEVEL;
+  const enableVerboseOutputLogger =
+    parseBooleanEnv(process.env.STATSIG_ENABLE_VERBOSE_LOGGER) === true;
+
+  return {
+    specsUrl: process.env.STATSIG_SPECS_URL,
+    logEventUrl: process.env.STATSIG_LOG_EVENT_URL,
+    idListsUrl: process.env.STATSIG_ID_LISTS_URL,
+    initTimeoutMs: parseNumberEnv(process.env.STATSIG_INIT_TIMEOUT_MS),
+    fallbackToStatsigApi: parseBooleanEnv(
+      process.env.STATSIG_FALLBACK_TO_STATSIG_API,
+    ),
+    outputLogLevel,
+    outputLoggerProvider: enableVerboseOutputLogger
+      ? createStatsigOutputLogger()
+      : undefined,
+    proxyConfig,
+  };
+}
+
+const statsigOptions = buildStatsigOptions();
+console.log(
+  '[server] Statsig network options',
+  JSON.stringify(
+    {
+      specsUrl: statsigOptions.specsUrl ?? 'default',
+      logEventUrl: statsigOptions.logEventUrl ?? 'default',
+      idListsUrl: statsigOptions.idListsUrl ?? 'default',
+      initTimeoutMs: statsigOptions.initTimeoutMs ?? 'default',
+      fallbackToStatsigApi: statsigOptions.fallbackToStatsigApi ?? false,
+      outputLogLevel: statsigOptions.outputLogLevel ?? 'default',
+      verboseOutputLogger:
+        statsigOptions.outputLoggerProvider != null,
+      proxyConfigured: statsigOptions.proxyConfig != null,
+      proxyProtocol: statsigOptions.proxyConfig?.proxyProtocol ?? null,
+      proxyHost: statsigOptions.proxyConfig?.proxyHost ?? null,
+      proxyPort: statsigOptions.proxyConfig?.proxyPort ?? null,
+      proxyCaCertPath:
+        statsigOptions.proxyConfig?.caCertPath != null ? 'set' : null,
+    },
+    null,
+    2,
+  ),
+);
+
+const statsig = new Statsig(process.env.STATSIG_SERVER_KEY, statsigOptions);
 await statsig.initialize();
 
 function getOrCreateStableID(req, res) {

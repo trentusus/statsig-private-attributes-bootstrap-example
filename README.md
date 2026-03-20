@@ -56,6 +56,45 @@ Those logs are intentionally small so a new reader can follow the privacy bounda
 6. Run `npm start`
 7. Open `http://localhost:3000`
 
+## Optional Node Core debugging
+
+If you want more context from the Node Core SDK while it initializes or polls for specs, you can enable the optional debug settings in [.env.example](/Users/tkalischsmith/statsig-code/customer-snippets/js-client-node-core-bootstrap-private-attributes/.env.example):
+
+- `STATSIG_OUTPUT_LOG_LEVEL=debug`
+- `STATSIG_ENABLE_VERBOSE_LOGGER=true`
+- `STATSIG_INIT_TIMEOUT_MS=3000`
+
+With those enabled, the sample server prints:
+
+- the Statsig network configuration it is using
+- tagged SDK log lines from `outputLoggerProvider`
+- the same bootstrap request and response summaries as before
+
+## Optional outbound proxy configuration
+
+The sample server also includes placeholder env vars for Node Core `proxyConfig`:
+
+- `STATSIG_PROXY_PROTOCOL`
+- `STATSIG_PROXY_HOST`
+- `STATSIG_PROXY_PORT`
+- `STATSIG_PROXY_AUTH`
+- `STATSIG_PROXY_CA_CERT_PATH`
+
+Example:
+
+```bash
+STATSIG_PROXY_PROTOCOL=http
+STATSIG_PROXY_HOST=proxy.internal.example
+STATSIG_PROXY_PORT=8080
+STATSIG_PROXY_AUTH=username:password
+```
+
+If you need to point the SDK at custom Statsig endpoints or your own proxy entrypoints, you can also set:
+
+- `STATSIG_SPECS_URL`
+- `STATSIG_LOG_EVENT_URL`
+- `STATSIG_ID_LISTS_URL`
+
 ## Files
 
 - [server.js](/Users/tkalischsmith/statsig-code/customer-snippets/js-client-node-core-bootstrap-private-attributes/server.js): Express server that bootstraps Statsig with the client user
